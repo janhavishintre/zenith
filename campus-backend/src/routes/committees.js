@@ -1,70 +1,58 @@
 const express = require("express");
-const authMiddleware = require("../middleware/auth");
-
+const pool = require("../config/db");
+const authenticateToken = require("../middleware/auth");
 const router = express.Router();
 
-// Temporary data
-let committees = [
-    {
-        id: 1,
-        name: "Tech Club",
-        description: "Student technology community",
-        category: "Technical"
-    },
-    {
-        id: 2,
-        name: "Cultural Committee",
-        description: "Organizes cultural activities",
-        category: "Cultural"
+// GET ALL COMMITTEES
+router.get("/", async (req, res) => {
+    try {
+        const result = await pool.query("SELECT * FROM committees ORDER BY created_at DESC");
+        res.json({ committees: result.rows });
+    } catch (error) {
+        console.error("Get committees error:", error);
+        res.status(500).json({ message: "Server error" });
     }
-];
-
-
-// GET all committees
-router.get("/", (req, res) => {
-    res.json(committees);
 });
 
+// GET COMMITTEE BY ID
+router.get("/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query("SELECT * FROM committees WHERE id = $1", [id]);
 
-// GET committee by ID
-router.get("/:id",authMiddleware,(req, res) => {
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: "Committee not found" });
+        }
 
-    const id = parseInt(req.params.id);
+        res.json({ committee: result.rows[0] });
+    } catch (error) {
+        console.error("Get committee error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+});
 
-    const committee = committees.find(c => c.id === id);
+// CREATE COMMITTEE (Protected)
+router.post("/", authenticateToken, async (req, res) => {
+    try {
+        const { name, description } = req.body;
+        
+        if (!name) {
+            return res.status(400).json({ message: "Committee name is required" });
+        }
 
-    if (!committee) {
-        return res.status(404).json({
-            message: "Committee not found"
+        const result = await pool.query(
+            `INSERT INTO committees (name, description) VALUES ($1, $2) RETURNING *`,
+            [name, description || null]
+        );
+
+        res.status(201).json({
+            message: "Committee created successfully",
+            committee: result.rows[0],
         });
+    } catch (error) {
+        console.error("Create committee error:", error);
+        res.status(500).json({ message: "Server error" });
     }
-
-    res.json(committee);
 });
-
-
-// POST - create a committee
-router.post("/", authMiddleware, (req, res) => {
-
-    const { name, description, category } = req.body;
-
-    if (!name) {
-        return res.status(400).json({
-            message: "Committee name is required"
-        });
-    }
-
-    const newCommittee = {
-        id: committees.length + 1,
-        name,
-        description,
-        category
-    };
-
-    committees.push(newCommittee);
-
-    res.status(201).json(newCommittee);
-});
-
 
 module.exports = router;
